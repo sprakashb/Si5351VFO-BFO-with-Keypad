@@ -4,19 +4,20 @@
 // thanks to all those who have published their codes and various libraries for the benefit of other enthusiasts and hams.
 // Copy left ... all are free to copy and use this prog for Ham radio, personal, educational or even commercial applications
 // just dont forget the contribution of great people who allowed us to get benefit of their hard work.
-// By : VU2SPF / SP Bhatnagar, qth at  Bhavnagar, India. PCB artwork and details also on vu2spf.blogspot.in
+// By : VU2SPF / SP Bhatnagar, qth at  Bhavnagar, India. PCB artwork and details also on vu2spf.blogspot.in 
 // Please send error reports / suggestions/ mods to vu2spf@gmail.com
+//v1.2: 24/9/2016 : minor updates in band switching
 //
-#include <RotaryEncoder.h>
-#include <EEPROM.h>
+#include <RotaryEncoder.h>        // from  http://www.mathertel.de/Arduino/RotaryEncoderLibrary.aspx
+#include <EEPROM.h>               // from arduino.cc
 #include "EEPROMAnything.h"
-#include <LiquidCrystal.h>
-#include <si5351.h> // Etherkit - NT7S Library
-#include <Wire.h>   // for 5351
-#include <SPI.h>    // for liquid crystal lib using 595
+#include <LiquidCrystal.h>        // new version from arduino.cc
+#include <si5351.h>               // Etherkit - NT7S Library
+#include <Wire.h>                 // for 5351
+#include <SPI.h>                  // for liquid crystal lib using 595
 
 // ------------ band inits some of these may be country / region specific, adjust accordingly
-int numBands=8; // How many bands in this program
+int numBands = 8; // How many bands in this program
 String BandNames[] = { " 40m", " 30m", " 20m", " 17m", " 15m", " 12m", " 10m", "Cont"};  // "136k", "160m", " 80m", " 60m", may be added
 int Bands[] = { 40, 30, 20, 17, 15, 12, 10, 0}; // 136, 160, 80, 60, may be added
 long BandBases[] = { 7000000L, 10100000L, 14000000L, 18068000L, 21000000L, 24890000L, 28000000L, 0L}; // 135700L, 1810000L, 3500000L, 5258500L,
@@ -26,7 +27,7 @@ int bindex = 0; // initial band selection index, on startup 40 m selected ,  can
 int BandSwitch[3] = {4, 5, 6}; //digital pins which connectdriver ULN2803 to select BPF/LPF
 // but total bands are 12 so we must combine a few bands together or cutdown no of bands
 // eg genesis bpf and lpf are grouped as 7-10, 14-18 and 21-24-28 MHz
-
+int prevbindex = bindex;
 //----------- LCD, Encoder &  DDS defs
 // LCD connections
 // initialize the library with the number of the sspin (or the latch pin of the 74HC595)
@@ -130,11 +131,18 @@ void setup() {
   PCICR |= (1 << PCIE1);    // This enables Pin Change Interrupt 1 that covers the Analog input pins or Port C.
   PCMSK1 |= (1 << PCINT10) | (1 << PCINT11);  // This enables the interrupt for pin 2 and 3 of Port C.
 
+  pinMode(BandSwitch[0], OUTPUT);
+  pinMode(BandSwitch[1], OUTPUT);
+  pinMode(BandSwitch[2], OUTPUT);
+  for (int bs = 0; bs <= 3; bs++)
+    digitalWrite(BandSwitch[bs], LOW);  // all bands off
+
+
   loadLastSettings(); // initially on power up retrieve last used settings
   load_freq();
   showFreq(currFreq);
   showInfo();
-  switchBands();
+  //switchBands();
   //-------------------
   Wire.begin();
   si5351.set_correction(140); //**mine. There is a calibration sketch in File/Examples/si5351Arduino-Jason
@@ -218,9 +226,8 @@ ISR(PCINT1_vect)
         if (bindex >= numBands)  // total numBands bands defined
           bindex = 0;
         if (bindex < 0)
-          bindex = numBands-1; // index starts from 0
+          bindex = numBands - 1; // index starts from 0
         currFreq = BandWkgFreqs[bindex];
-        switchBands();  // ** output band selection on pins
         Updated = true;
         UpdTime = millis();
         break;
@@ -497,9 +504,31 @@ void chkBand()
     if (currFreq >= BandBases[i] && currFreq <= BandTops[i])
     {
       bindex = i;
+      if (prevbindex != bindex)
+      {
+        switchBands();  // ** output band selection on pins
+        prevbindex = bindex;
+      }
       break;
     }
   }
+}
+void switchBands()
+{
+  if (bindex == 0 || bindex == 1)
+    digitalWrite(BandSwitch[0], HIGH); // 7-10 MHz filter activated
+  else
+    digitalWrite(BandSwitch[0], LOW); // 7-10 MHz filter off
+
+  if (bindex == 2 || bindex == 3)
+    digitalWrite(BandSwitch[1], HIGH); // 14-18 MHz filter activated
+  else
+    digitalWrite(BandSwitch[1], LOW); // 14-18 MHz filter off
+
+  if (bindex == 4 || bindex == 5 || bindex == 6)
+    digitalWrite(BandSwitch[2], HIGH); // 21-24-28 MHz filter activated
+  else
+    digitalWrite(BandSwitch[2], LOW); // 21-24-28 MHz filter off
 }
 //-------------
 // Program DDS chip
